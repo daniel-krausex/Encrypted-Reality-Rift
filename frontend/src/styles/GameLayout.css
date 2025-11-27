@@ -1,0 +1,14 @@
+.rift-layout {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 3rem 1.25rem 4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2.5rem;
+}
+
+@media (min-width: 1024px) {
+  .rift-layout {
+    padding-inline: 0;
+  }
+}
