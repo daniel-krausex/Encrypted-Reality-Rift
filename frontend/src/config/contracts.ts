@@ -1,5 +1,5 @@
 export const CONTRACT_ADDRESS =
-  '0x0000000000000000000000000000000000000000' as `0x${string}`; // Replace with deployed address
+  '0x462Fa4642d72E87AE9b911b6bC44172664d9926A' as `0x${string}`; // Replace with deployed address
 
 export const CONTRACT_ABI = [
   {
