@@ -64,6 +64,14 @@ function extractErrorMessage(error: unknown) {
   return 'Something went wrong. Please try again.';
 }
 
+function normalizeGamesPlayed(raw: unknown): number {
+  if (typeof raw === 'bigint') {
+    return Number(raw);
+  }
+  const parsed = Number(raw ?? 0);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
 export function RiftGameApp() {
   const { address, isConnected } = useAccount();
   const publicClient = usePublicClient({ chainId: sepolia.id });
@@ -102,7 +110,7 @@ export function RiftGameApp() {
 
       return {
         encryptedScore: state[0],
-        gamesPlayed: Number(state[1]),
+        gamesPlayed: normalizeGamesPlayed(state[1]),
         registered: state[2],
         lastOutcome,
       };
