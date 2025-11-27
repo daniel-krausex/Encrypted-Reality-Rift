@@ -87,7 +87,11 @@ export function RiftGameApp() {
 
   const zamaReady = Boolean(instance) && !zamaLoading;
 
-  const { data: playerSnapshot, refetch: refetchPlayerSnapshot } = useQuery<PlayerSnapshot | null>({
+  const {
+    data: playerSnapshot,
+    refetch: refetchPlayerSnapshot,
+    isLoading: playerLoading,
+  } = useQuery<PlayerSnapshot | null>({
     queryKey: ['player-state', address],
     queryFn: async () => {
       if (!publicClient || !address) {
@@ -121,10 +125,13 @@ export function RiftGameApp() {
 
   const encryptedScore = playerSnapshot?.encryptedScore ?? (ZERO_BYTES32 as `0x${string}`);
   const gamesPlayed = playerSnapshot?.gamesPlayed ?? 0;
-  const registered = playerSnapshot?.registered ?? false;
+  const registered = (playerSnapshot?.registered ?? false) || encryptedScore !== ZERO_BYTES32;
   const lastOutcome = playerSnapshot?.lastOutcome ?? (ZERO_BYTES32 as `0x${string}`);
 
   const disabledReason = useMemo(() => {
+    if (playerLoading) {
+      return 'Loading player state...';
+    }
     if (!isConnected) {
       return 'Connect a wallet to join the game.';
     }
@@ -135,7 +142,7 @@ export function RiftGameApp() {
       return 'Waiting for the encryption relayer.';
     }
     return null;
-  }, [isConnected, registered, zamaReady]);
+  }, [isConnected, registered, zamaReady, playerLoading]);
 
   const handleRegister = useCallback(async () => {
     if (!isConnected) {
