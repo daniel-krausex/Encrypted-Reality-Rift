@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useAccount, usePublicClient } from 'wagmi';
 import { sepolia } from 'wagmi/chains';
 import { useQuery } from '@tanstack/react-query';
@@ -18,6 +18,11 @@ const TOTAL_MONSTERS = 4;
 const ZERO_BYTES32 = '0x0000000000000000000000000000000000000000000000000000000000000000';
 
 type PlayerStateTuple = readonly [`0x${string}`, bigint, boolean];
+type PlayerStateResult = PlayerStateTuple & {
+  encryptedScore?: `0x${string}`;
+  gamesPlayed?: bigint;
+  registered?: boolean;
+};
 
 type PlayerSnapshot = {
   encryptedScore: `0x${string}`;
@@ -73,7 +78,8 @@ function normalizeGamesPlayed(raw: unknown): number {
 }
 
 export function RiftGameApp() {
-  const { address, isConnected } = useAccount();
+  const { address, isConnected, chainId } = useAccount();
+  const onSepolia = chainId === sepolia.id;
   const publicClient = usePublicClient({ chainId: sepolia.id });
   const signer = useEthersSigner();
   const { instance, isLoading: zamaLoading, error: zamaError } = useZamaInstance();
@@ -91,10 +97,17 @@ export function RiftGameApp() {
     data: playerSnapshot,
     refetch: refetchPlayerSnapshot,
     isLoading: playerLoading,
+    isError: playerError,
   } = useQuery<PlayerSnapshot | null>({
-    queryKey: ['player-state', address],
+    queryKey: ['player-state', address, chainId],
     queryFn: async () => {
-      if (!publicClient || !address) {
+      if (!publicClient || !address || !onSepolia) {
+        console.log('player-state query skipped', {
+          hasClient: Boolean(publicClient),
+          address,
+          onSepolia,
+          chainId,
+        });
         return null;
       }
 
@@ -103,7 +116,13 @@ export function RiftGameApp() {
         abi: CONTRACT_ABI,
         functionName: 'getPlayerState',
         args: [address as `0x${string}`],
-      })) as unknown as PlayerStateTuple;
+      })) as unknown as PlayerStateResult;
+
+      console.log('player-state raw', state);
+
+      const encryptedScoreRaw = (state as any).encryptedScore ?? state[0];
+      const gamesPlayedRaw = (state as any).gamesPlayed ?? state[1];
+      const registeredRaw = (state as any).registered ?? state[2];
 
       const lastOutcome = (await publicClient.readContract({
         address: CONTRACT_ADDRESS,
@@ -112,15 +131,17 @@ export function RiftGameApp() {
         args: [address as `0x${string}`],
       })) as `0x${string}`;
 
-      return {
-        encryptedScore: state[0],
-        gamesPlayed: normalizeGamesPlayed(state[1]),
-        registered: state[2],
+      const snapshot = {
+        encryptedScore: encryptedScoreRaw ?? (ZERO_BYTES32 as `0x${string}`),
+        gamesPlayed: normalizeGamesPlayed(gamesPlayedRaw),
+        registered: Boolean(registeredRaw),
         lastOutcome,
       };
+      console.log('player-state query result', snapshot);
+      return snapshot;
     },
-    enabled: Boolean(address && publicClient),
-    refetchInterval: 12000,
+    enabled: Boolean(address && publicClient && onSepolia),
+    refetchInterval: onSepolia ? 12000 : false,
   });
 
   const encryptedScore = playerSnapshot?.encryptedScore ?? (ZERO_BYTES32 as `0x${string}`);
@@ -128,12 +149,46 @@ export function RiftGameApp() {
   const registered = (playerSnapshot?.registered ?? false) || encryptedScore !== ZERO_BYTES32;
   const lastOutcome = playerSnapshot?.lastOutcome ?? (ZERO_BYTES32 as `0x${string}`);
 
+  useEffect(() => {
+    console.log('rift-app state', {
+      address,
+      chainId,
+      onSepolia,
+      isConnected,
+      playerLoading,
+      playerError,
+      encryptedScore,
+      registered,
+      gamesPlayed,
+      lastOutcome,
+      zamaReady,
+    });
+  }, [
+    address,
+    chainId,
+    onSepolia,
+    isConnected,
+    playerLoading,
+    playerError,
+    encryptedScore,
+    registered,
+    gamesPlayed,
+    lastOutcome,
+    zamaReady,
+  ]);
+
   const disabledReason = useMemo(() => {
     if (playerLoading) {
       return 'Loading player state...';
     }
+    if (playerError) {
+      return 'Could not load player state. Check your network and contract address.';
+    }
     if (!isConnected) {
       return 'Connect a wallet to join the game.';
+    }
+    if (!onSepolia) {
+      return 'Switch to the Sepolia network to continue.';
     }
     if (!registered) {
       return 'Register to unlock the monster challenge.';
@@ -142,7 +197,7 @@ export function RiftGameApp() {
       return 'Waiting for the encryption relayer.';
     }
     return null;
-  }, [isConnected, registered, zamaReady, playerLoading]);
+  }, [isConnected, registered, zamaReady, playerLoading, playerError, onSepolia]);
 
   const handleRegister = useCallback(async () => {
     if (!isConnected) {
